@@ -1,1 +1,51 @@
+name: Deploy Static Website to AWS EC2
 
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          EC2_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+
+      - name: Test SSH Connection
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          ssh -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            ubuntu@"$EC2_HOST" \
+            "echo SSH connection successful"
+
+      - name: Deploy Website
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          scp -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=accept-new \
+            index.html \
+            ubuntu@"$EC2_HOST":/tmp/index.html
+
+          ssh -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=accept-new \
+            ubuntu@"$EC2_HOST" \
+            "sudo install -o root -g root -m 644 /tmp/index.html /var/www/html/index.html && sudo nginx -t && sudo systemctl reload nginx"
